@@ -14,7 +14,7 @@ Host (macOS)                          Container (Linux VM)
 ─────────────────────────────────────────────────────────────
 src/container-runner.ts               container/agent-runner/
     │                                      │
-    │ spawns container                      │ runs Claude Agent SDK
+    │ spawns container                      │ runs OpenCode SDK
     │ with volume mounts                   │ with MCP servers
     │                                      │
     ├── data/env/env ──────────────> /workspace/env-dir/env
@@ -28,12 +28,12 @@ src/container-runner.ts               container/agent-runner/
 
 ## Log Locations
 
-| Log | Location | Content |
-|-----|----------|---------|
-| **Main app logs** | `logs/nanoclaw.log` | Host-side WhatsApp, routing, container spawning |
-| **Main app errors** | `logs/nanoclaw.error.log` | Host-side errors |
-| **Container run logs** | `groups/{folder}/logs/container-*.log` | Per-run: input, mounts, stderr, stdout |
-| **Claude sessions** | `~/.claude/projects/` | Claude Code session history |
+| Log                    | Location                               | Content                                         |
+| ---------------------- | -------------------------------------- | ----------------------------------------------- |
+| **Main app logs**      | `logs/nanoclaw.log`                    | Host-side WhatsApp, routing, container spawning |
+| **Main app errors**    | `logs/nanoclaw.error.log`              | Host-side errors                                |
+| **Container run logs** | `groups/{folder}/logs/container-*.log` | Per-run: input, mounts, stderr, stdout          |
+| **OpenCode sessions**  | `~/.claude/projects/`                  | OpenCode session history                        |
 
 ## Enabling Debug Logging
 
@@ -51,54 +51,63 @@ LOG_LEVEL=debug npm run dev
 ```
 
 Debug level shows:
+
 - Full mount configurations
 - Container command arguments
 - Real-time container stderr
 
 ## Common Issues
 
-### 1. "Claude Code process exited with code 1"
+### 1. "OpenCode process exited with code 1"
 
 **Check the container log file** in `groups/{folder}/logs/container-*.log`
 
 Common causes:
 
 #### Missing Authentication
+
 ```
 Invalid API key · Please run /login
 ```
+
 **Fix:** Ensure `.env` file exists with either OAuth token or API key:
+
 ```bash
 cat .env  # Should show one of:
-# CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-...  (subscription)
+# OPENCODE_OAUTH_TOKEN=sk-ant-oat01-...     (OAuth)
 # ANTHROPIC_API_KEY=sk-ant-api03-...        (pay-per-use)
 ```
 
 #### Root User Restriction
+
 ```
 --dangerously-skip-permissions cannot be used with root/sudo privileges
 ```
+
 **Fix:** Container must run as non-root user. Check Dockerfile has `USER node`.
 
 ### 2. Environment Variables Not Passing
 
 **Runtime note:** Environment variables passed via `-e` may be lost when using `-i` (interactive/piped stdin).
 
-**Workaround:** The system extracts only authentication variables (`CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`) from `.env` and mounts them for sourcing inside the container. Other env vars are not exposed.
+**Workaround:** The system extracts only authentication variables (`OPENCODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`) from `.env` and mounts them for sourcing inside the container. Other env vars are not exposed.
 
 To verify env vars are reaching the container:
+
 ```bash
 echo '{}' | docker run -i \
   -v $(pwd)/data/env:/workspace/env-dir:ro \
   --entrypoint /bin/bash nanoclaw-agent:latest \
-  -c 'export $(cat /workspace/env-dir/env | xargs); echo "OAuth: ${#CLAUDE_CODE_OAUTH_TOKEN} chars, API: ${#ANTHROPIC_API_KEY} chars"'
+  -c 'export $(cat /workspace/env-dir/env | xargs); echo "OAuth: ${#OPENCODE_OAUTH_TOKEN} chars, API: ${#ANTHROPIC_API_KEY} chars"'
 ```
 
 ### 3. Mount Issues
 
 **Container mount notes:**
+
 - Docker supports both `-v` and `--mount` syntax
 - Use `:ro` suffix for readonly mounts:
+
   ```bash
   # Readonly
   -v /path:/container/path:ro
@@ -108,14 +117,16 @@ echo '{}' | docker run -i \
   ```
 
 To check what's mounted inside a container:
+
 ```bash
 docker run --rm --entrypoint /bin/bash nanoclaw-agent:latest -c 'ls -la /workspace/'
 ```
 
 Expected structure:
+
 ```
 /workspace/
-├── env-dir/env           # Environment file (CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY)
+├── env-dir/env           # Environment file (OPENCODE_OAUTH_TOKEN or ANTHROPIC_API_KEY)
 ├── group/                # Current group folder (cwd)
 ├── project/              # Project root (main channel only)
 ├── global/               # Global CLAUDE.md (non-main only)
@@ -130,6 +141,7 @@ Expected structure:
 ### 4. Permission Issues
 
 The container runs as user `node` (uid 1000). Check ownership:
+
 ```bash
 docker run --rm --entrypoint /bin/bash nanoclaw-agent:latest -c '
   whoami
@@ -140,19 +152,21 @@ docker run --rm --entrypoint /bin/bash nanoclaw-agent:latest -c '
 
 All of `/workspace/` and `/app/` should be owned by `node`.
 
-### 5. Session Not Resuming / "Claude Code process exited with code 1"
+### 5. Session Not Resuming / "OpenCode process exited with code 1"
 
-If sessions aren't being resumed (new session ID every time), or Claude Code exits with code 1 when resuming:
+If sessions aren't being resumed (new session ID every time), or OpenCode exits with code 1 when resuming:
 
 **Root cause:** The SDK looks for sessions at `$HOME/.claude/projects/`. Inside the container, `HOME=/home/node`, so it looks at `/home/node/.claude/projects/`.
 
 **Check the mount path:**
+
 ```bash
 # In container-runner.ts, verify mount is to /home/node/.claude/, NOT /root/.claude/
 grep -A3 "Claude sessions" src/container-runner.ts
 ```
 
 **Verify sessions are accessible:**
+
 ```bash
 docker run --rm --entrypoint /bin/bash \
   -v ~/.claude:/home/node/.claude \
@@ -163,11 +177,12 @@ ls -la $HOME/.claude/projects/ 2>&1 | head -5
 ```
 
 **Fix:** Ensure `container-runner.ts` mounts to `/home/node/.claude/`:
+
 ```typescript
 mounts.push({
   hostPath: claudeDir,
-  containerPath: '/home/node/.claude',  // NOT /root/.claude
-  readonly: false
+  containerPath: '/home/node/.claude', // NOT /root/.claude
+  readonly: false,
 });
 ```
 
@@ -178,6 +193,7 @@ If an MCP server fails to start, the agent may exit. Check the container logs fo
 ## Manual Container Testing
 
 ### Test the full agent flow:
+
 ```bash
 # Set up env file
 mkdir -p data/env groups/test
@@ -192,24 +208,26 @@ echo '{"prompt":"What is 2+2?","groupFolder":"test","chatJid":"test@g.us","isMai
   nanoclaw-agent:latest
 ```
 
-### Test Claude Code directly:
+### Test OpenCode directly:
+
 ```bash
 docker run --rm --entrypoint /bin/bash \
   -v $(pwd)/data/env:/workspace/env-dir:ro \
   nanoclaw-agent:latest -c '
   export $(cat /workspace/env-dir/env | xargs)
-  claude -p "Say hello" --dangerously-skip-permissions --allowedTools ""
+  opencode -p "Say hello" --dangerously-skip-permissions --allowedTools ""
 '
 ```
 
 ### Interactive shell in container:
+
 ```bash
 docker run --rm -it --entrypoint /bin/bash nanoclaw-agent:latest
 ```
 
 ## SDK Options Reference
 
-The agent-runner uses these Claude Agent SDK options:
+The agent-runner uses these OpenCode SDK options:
 
 ```typescript
 query({
@@ -225,7 +243,7 @@ query({
 })
 ```
 
-**Important:** `allowDangerouslySkipPermissions: true` is required when using `permissionMode: 'bypassPermissions'`. Without it, Claude Code exits with code 1.
+**Important:** `allowDangerouslySkipPermissions: true` is required when using `permissionMode: 'bypassPermissions'`. Without it, OpenCode exits with code 1.
 
 ## Rebuilding After Changes
 
@@ -252,8 +270,8 @@ docker run --rm --entrypoint /bin/bash nanoclaw-agent:latest -c '
   echo "=== Node version ==="
   node --version
 
-  echo "=== Claude Code version ==="
-  claude --version
+  echo "=== OpenCode version ==="
+  opencode --version
 
   echo "=== Installed packages ==="
   ls /app/node_modules/
@@ -262,9 +280,10 @@ docker run --rm --entrypoint /bin/bash nanoclaw-agent:latest -c '
 
 ## Session Persistence
 
-Claude sessions are stored per-group in `data/sessions/{group}/.claude/` for security isolation. Each group has its own session directory, preventing cross-group access to conversation history.
+OpenCode sessions are stored per-group in `data/sessions/{group}/.claude/` for security isolation. Each group has its own session directory, preventing cross-group access to conversation history.
 
 **Critical:** The mount path must match the container user's HOME directory:
+
 - Container user: `node`
 - Container HOME: `/home/node`
 - Mount target: `/home/node/.claude/` (NOT `/root/.claude/`)
@@ -283,6 +302,7 @@ sqlite3 store/messages.db "DELETE FROM sessions WHERE group_folder = '{groupFold
 ```
 
 To verify session resumption is working, check the logs for the same session ID across messages:
+
 ```bash
 grep "Session initialized" logs/nanoclaw.log | tail -5
 # Should show the SAME session ID for consecutive messages in the same group
@@ -310,6 +330,7 @@ cat data/ipc/{groupFolder}/current_tasks.json
 ```
 
 **IPC file types:**
+
 - `messages/*.json` - Agent writes: outgoing WhatsApp messages
 - `tasks/*.json` - Agent writes: task operations (schedule, pause, resume, cancel, refresh_groups)
 - `current_tasks.json` - Host writes: read-only snapshot of scheduled tasks
@@ -323,7 +344,7 @@ Run this to check common issues:
 echo "=== Checking NanoClaw Container Setup ==="
 
 echo -e "\n1. Authentication configured?"
-[ -f .env ] && (grep -q "CLAUDE_CODE_OAUTH_TOKEN=sk-" .env || grep -q "ANTHROPIC_API_KEY=sk-" .env) && echo "OK" || echo "MISSING - add CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY to .env"
+[ -f .env ] && (grep -q "OPENCODE_OAUTH_TOKEN=sk-" .env || grep -q "ANTHROPIC_API_KEY=sk-" .env) && echo "OK" || echo "MISSING - add OPENCODE_OAUTH_TOKEN or ANTHROPIC_API_KEY to .env"
 
 echo -e "\n2. Env file copied for container?"
 [ -f data/env/env ] && echo "OK" || echo "MISSING - will be created on first run"

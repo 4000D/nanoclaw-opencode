@@ -19,11 +19,13 @@
 <p align="center">Every agent gets its own isolated container inside a micro VM.<br>Hypervisor-level isolation. Millisecond startup. No complex setup.</p>
 
 **macOS (Apple Silicon)**
+
 ```bash
 curl -fsSL https://nanoclaw.dev/install-docker-sandboxes.sh | bash
 ```
 
 **Windows (WSL)**
+
 ```bash
 curl -fsSL https://nanoclaw.dev/install-docker-sandboxes-windows.sh | bash
 ```
@@ -45,7 +47,7 @@ NanoClaw provides that same core functionality, but in a codebase small enough t
 ```bash
 gh repo fork qwibitai/nanoclaw --clone
 cd nanoclaw
-claude
+opencode
 ```
 
 <details>
@@ -54,32 +56,33 @@ claude
 1. Fork [qwibitai/nanoclaw](https://github.com/qwibitai/nanoclaw) on GitHub (click the Fork button)
 2. `git clone https://github.com/<your-username>/nanoclaw.git`
 3. `cd nanoclaw`
-4. `claude`
+4. `opencode`
 
 </details>
 
-Then run `/setup`. Claude Code handles everything: dependencies, authentication, container setup and service configuration.
+Then run `/setup`. OpenCode handles everything: dependencies, authentication, container setup and service configuration.
 
-> **Note:** Commands prefixed with `/` (like `/setup`, `/add-whatsapp`) are [Claude Code skills](https://code.claude.com/docs/en/skills). Type them inside the `claude` CLI prompt, not in your regular terminal. If you don't have Claude Code installed, get it at [claude.com/product/claude-code](https://claude.com/product/claude-code).
+> **Note:** Commands prefixed with `/` (like `/setup`, `/add-whatsapp`) are OpenCode skills. Type them inside the `opencode` CLI prompt, not in your regular terminal. If you do not have OpenCode installed yet, install it first.
 
 ## Philosophy
 
-**Small enough to understand.** One process, a few source files and no microservices. If you want to understand the full NanoClaw codebase, just ask Claude Code to walk you through it.
+**Small enough to understand.** One process, a few source files and no microservices. If you want to understand the full NanoClaw codebase, just ask OpenCode to walk you through it.
 
 **Secure by isolation.** Agents run in Linux containers (Apple Container on macOS, or Docker) and they can only see what's explicitly mounted. Bash access is safe because commands run inside the container, not on your host.
 
-**Built for the individual user.** NanoClaw isn't a monolithic framework; it's software that fits each user's exact needs. Instead of becoming bloatware, NanoClaw is designed to be bespoke. You make your own fork and have Claude Code modify it to match your needs.
+**Built for the individual user.** NanoClaw isn't a monolithic framework; it's software that fits each user's exact needs. Instead of becoming bloatware, NanoClaw is designed to be bespoke. You make your own fork and have OpenCode modify it to match your needs.
 
 **Customization = code changes.** No configuration sprawl. Want different behavior? Modify the code. The codebase is small enough that it's safe to make changes.
 
 **AI-native.**
-- No installation wizard; Claude Code guides setup.
+
+- No installation wizard; OpenCode guides setup.
 - No monitoring dashboard; ask Claude what's happening.
 - No debugging tools; describe the problem and Claude fixes it.
 
-**Skills over features.** Instead of adding features (e.g. support for Telegram) to the codebase, contributors submit [claude code skills](https://code.claude.com/docs/en/skills) like `/add-telegram` that transform your fork. You end up with clean code that does exactly what you need.
+**Skills over features.** Instead of adding features (e.g. support for Telegram) to the codebase, contributors submit OpenCode skills like `/add-telegram` that transform your fork. You end up with clean code that does exactly what you need.
 
-**Best harness, best model.** NanoClaw runs on the Claude Agent SDK, which means you're running Claude Code directly. Claude Code is highly capable and its coding and problem-solving capabilities allow it to modify and expand NanoClaw and tailor it to each user.
+**Best harness, best model.** NanoClaw runs on the OpenCode SDK, which means you're running OpenCode directly. Claude remains highly capable, and OpenCode gives it the coding and problem-solving harness needed to modify and expand NanoClaw for each user.
 
 ## What It Supports
 
@@ -103,6 +106,7 @@ Talk to your assistant with the trigger word (default: `@Andy`):
 ```
 
 From the main channel (your self-chat), you can manage groups and tasks:
+
 ```
 @Andy list all scheduled tasks across groups
 @Andy pause the Monday briefing task
@@ -111,7 +115,7 @@ From the main channel (your self-chat), you can manage groups and tasks:
 
 ## Customizing
 
-NanoClaw doesn't use configuration files. To make changes, just tell Claude Code what you want:
+NanoClaw doesn't use configuration files. To make changes, just tell OpenCode what you want:
 
 - "Change the trigger word to @Bob"
 - "Remember in the future to make responses shorter and more direct"
@@ -135,22 +139,24 @@ Users then run `/add-telegram` on their fork and get clean code that does exactl
 Skills we'd like to see:
 
 **Communication Channels**
+
 - `/add-signal` - Add Signal as a channel
 
 **Session Management**
-- `/clear` - Add a `/clear` command that compacts the conversation (summarizes context while preserving critical information in the same session). Requires figuring out how to trigger compaction programmatically via the Claude Agent SDK.
+
+- `/clear` - Add a `/clear` command that compacts the conversation (summarizes context while preserving critical information in the same session). Requires figuring out how to trigger compaction programmatically via the OpenCode SDK.
 
 ## Requirements
 
 - macOS or Linux
 - Node.js 20+
-- [Claude Code](https://claude.ai/download)
+- OpenCode
 - [Apple Container](https://github.com/apple/container) (macOS) or [Docker](https://docker.com/products/docker-desktop) (macOS/Linux)
 
 ## Architecture
 
 ```
-Channels --> SQLite --> Polling loop --> Container (Claude Agent SDK) --> Response
+Channels --> SQLite --> Polling loop --> Container (OpenCode SDK) --> Response
 ```
 
 Single Node.js process. Channels are added via skills and self-register at startup — the orchestrator connects whichever ones have credentials present. Agents execute in isolated Linux containers with filesystem isolation. Only mounted directories are accessible. Per-group message queue with concurrency control. IPC via filesystem.
@@ -158,6 +164,7 @@ Single Node.js process. Channels are added via skills and self-register at start
 For the full architecture details, see [docs/SPEC.md](docs/SPEC.md).
 
 Key files:
+
 - `src/index.ts` - Orchestrator: state, message loop, agent invocation
 - `src/channels/registry.ts` - Channel registry (self-registration at startup)
 - `src/ipc.ts` - IPC watcher and task processing
@@ -196,6 +203,7 @@ ANTHROPIC_AUTH_TOKEN=your-token-here
 ```
 
 This allows you to use:
+
 - Local models via [Ollama](https://ollama.ai) with an API proxy
 - Open-source models hosted on [Together AI](https://together.ai), [Fireworks](https://fireworks.ai), etc.
 - Custom model deployments with Anthropic-compatible APIs
@@ -204,11 +212,11 @@ Note: The model must support the Anthropic API format for best compatibility.
 
 **How do I debug issues?**
 
-Ask Claude Code. "Why isn't the scheduler running?" "What's in the recent logs?" "Why did this message not get a response?" That's the AI-native approach that underlies NanoClaw.
+Ask OpenCode. "Why isn't the scheduler running?" "What's in the recent logs?" "Why did this message not get a response?" That's the AI-native approach that underlies NanoClaw.
 
 **Why isn't the setup working for me?**
 
-If you have issues, during setup, Claude will try to dynamically fix them. If that doesn't work, run `claude`, then run `/debug`. If Claude finds an issue that is likely affecting other users, open a PR to modify the setup SKILL.md.
+If you have issues, during setup, Claude will try to dynamically fix them. If that doesn't work, run `opencode`, then run `/debug`. If Claude finds an issue that is likely affecting other users, open a PR to modify the setup SKILL.md.
 
 **What changes will be accepted into the codebase?**
 
