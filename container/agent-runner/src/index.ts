@@ -1,11 +1,7 @@
 import fs from 'fs';
 import path from 'path';
-import {
-  createOpencode,
-  type OpencodeClient,
-  type Part,
-} from '@opencode-ai/sdk';
 import { fileURLToPath } from 'url';
+import { createOpencode, OpencodeClient, Part } from '@opencode-ai/sdk';
 
 interface ContainerInput {
   prompt: string;
@@ -287,9 +283,7 @@ function extractTextFromParts(parts: Part[] | undefined): string | null {
   }
 
   const text = parts
-    .filter(
-      (part): part is Extract<Part, { type: 'text' }> => part.type === 'text',
-    )
+    .filter((part): part is Part & { text: string } => part.type === 'text')
     .map((part) => part.text)
     .join('');
 
@@ -371,24 +365,22 @@ async function promptSessionAsync(
   prompt: string,
   system?: string,
 ): Promise<void> {
-  const promptAsync = (
-    client.session as unknown as {
-      promptAsync?: (options: {
-        path: { id: string };
-        query: { directory: string };
-        body: {
-          parts: [{ type: 'text'; text: string }];
-          system?: string;
-        };
-      }) => Promise<{ error?: unknown }>;
-    }
-  ).promptAsync;
+  const session = client.session as unknown as {
+    promptAsync?: (options: {
+      path: { id: string };
+      query: { directory: string };
+      body: {
+        parts: [{ type: 'text'; text: string }];
+        system?: string;
+      };
+    }) => Promise<{ error?: unknown }>;
+  };
 
-  if (!promptAsync) {
+  if (!session.promptAsync) {
     throw new Error('OpenCode SDK does not expose session.promptAsync()');
   }
 
-  const promptResult = await promptAsync({
+  const promptResult = await session.promptAsync({
     path: { id: sessionId },
     query: { directory: QUERY_DIRECTORY },
     body: {
@@ -606,11 +598,22 @@ async function main(): Promise<void> {
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
   const mcpServerPath = path.join(__dirname, 'ipc-mcp-stdio.js');
 
-  process.env.OPENCODE_PERMISSION = process.env.OPENCODE_PERMISSION || 'allow';
+  process.env.OPENCODE_PERMISSION =
+    process.env.OPENCODE_PERMISSION || JSON.stringify('allow');
 
-  const opencode = await createOpencode({
-    config: buildOpencodeConfig(mcpServerPath, containerInput),
-  });
+  let opencode: Awaited<ReturnType<typeof createOpencode>>;
+  try {
+    opencode = await createOpencode({
+      timeout: 30000,
+      config: buildOpencodeConfig(mcpServerPath, containerInput),
+    });
+  } catch (err) {
+    const msg =
+      err instanceof Error ? err.message + '\n' + err.stack : String(err);
+    log(`createOpencode failed: ${msg}`);
+    writeOutput({ status: 'error', result: null, error: msg });
+    process.exit(1);
+  }
 
   let sessionId = containerInput.sessionId;
   fs.mkdirSync(IPC_INPUT_DIR, { recursive: true });

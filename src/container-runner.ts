@@ -171,6 +171,29 @@ function buildVolumeMounts(
     readonly: false,
   });
 
+  const hostAuthJson = path.join(
+    process.env.HOME || '/root',
+    '.local',
+    'share',
+    'opencode',
+    'auth.json',
+  );
+  if (fs.existsSync(hostAuthJson)) {
+    const groupAuthDir = path.join(
+      DATA_DIR,
+      'sessions',
+      group.folder,
+      'opencode-data',
+    );
+    fs.mkdirSync(groupAuthDir, { recursive: true });
+    fs.copyFileSync(hostAuthJson, path.join(groupAuthDir, 'auth.json'));
+    mounts.push({
+      hostPath: groupAuthDir,
+      containerPath: '/home/node/.local/share/opencode',
+      readonly: false,
+    });
+  }
+
   // Copy agent-runner source into a per-group writable location so agents
   // can customize it (add tools, change behavior) without affecting other
   // groups. Recompiled on container startup via entrypoint.sh.
@@ -217,23 +240,25 @@ function buildContainerArgs(
   // Pass host timezone so container's local time matches the user's
   args.push('-e', `TZ=${TIMEZONE}`);
 
-  // Route API traffic through the credential proxy (containers never see real secrets)
-  args.push(
-    '-e',
-    `ANTHROPIC_BASE_URL=http://${CONTAINER_HOST_GATEWAY}:${CREDENTIAL_PROXY_PORT}`,
+  // Credential proxy fallback (used when auth.json is not available)
+  const hostAuthJson = path.join(
+    process.env.HOME || '/root',
+    '.local',
+    'share',
+    'opencode',
+    'auth.json',
   );
-
-  // Mirror the host's auth method with a placeholder value.
-  // API key mode: SDK sends x-api-key, proxy replaces with real key.
-  // OAuth mode:   SDK exchanges placeholder token for temp API key,
-  //               proxy injects real OAuth token on that exchange request.
-  const authMode = detectAuthMode();
-  if (authMode === 'api-key') {
-    args.push('-e', 'ANTHROPIC_API_KEY=placeholder');
+  if (!fs.existsSync(hostAuthJson)) {
+    args.push(
+      '-e',
+      `ANTHROPIC_BASE_URL=http://${CONTAINER_HOST_GATEWAY}:${CREDENTIAL_PROXY_PORT}`,
+    );
+    const authMode = detectAuthMode();
+    if (authMode === 'api-key') {
+      args.push('-e', 'ANTHROPIC_API_KEY=placeholder');
+    }
+    args.push(...hostGatewayArgs());
   }
-
-  // Runtime-specific args for host gateway resolution
-  args.push(...hostGatewayArgs());
 
   // Run as host user so bind-mounted files are accessible.
   // Skip when running as root (uid 0), as the container's node user (uid 1000),

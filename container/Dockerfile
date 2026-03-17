@@ -24,13 +24,15 @@ RUN apt-get update && apt-get install -y \
     libxshmfence1 \
     curl \
     git \
+    unzip \
     && rm -rf /var/lib/apt/lists/*
 
 # Set Chromium path for agent-browser
 ENV AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium
 ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
 
-# Install agent-browser and OpenCode CLI globally
+# Install Bun runtime and OpenCode CLI
+RUN curl -fsSL https://bun.sh/install | bash && cp /root/.bun/bin/bun /usr/local/bin/bun
 RUN npm install -g agent-browser opencode-ai
 
 # Create app directory
@@ -55,10 +57,13 @@ RUN mkdir -p /workspace/group /workspace/global /workspace/extra /workspace/ipc/
 # Container input (prompt, group info) is passed via stdin JSON.
 # Credentials are injected by the host's credential proxy — never passed here.
 # Follow-up messages arrive via IPC files in /workspace/ipc/input/
-RUN printf '#!/bin/bash\nset -e\ncd /app && npx tsc --outDir /tmp/dist 2>&1 >&2\nln -s /app/node_modules /tmp/dist/node_modules\nchmod -R a-w /tmp/dist\ncat > /tmp/input.json\nnode /tmp/dist/index.js < /tmp/input.json\n' > /app/entrypoint.sh && chmod +x /app/entrypoint.sh
+RUN printf 'import("@opencode-ai/sdk").then(sdk=>{globalThis.__opencodeSdk=sdk;return import("./dist/index.js")}).catch(e=>{console.error(e);process.exit(1)});\n' > /app/loader.cjs \
+ && printf '#!/bin/bash\nset -e\ncat > /tmp/input.json\ncd /app && exec node loader.cjs < /tmp/input.json\n' > /app/entrypoint.sh && chmod +x /app/entrypoint.sh
+
+RUN mkdir -p /home/node/.local/share/opencode /home/node/.local/state/opencode /home/node/.cache/opencode && chmod -R 777 /home/node/.local /home/node/.cache
 
 # Set ownership to node user (non-root) for writable directories
-RUN chown -R node:node /workspace && chmod 777 /home/node
+RUN chown -R node:node /workspace /app && chmod 777 /home/node
 
 # Switch to non-root user (required for --yolo)
 USER node
