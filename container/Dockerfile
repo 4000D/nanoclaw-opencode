@@ -30,8 +30,8 @@ RUN apt-get update && apt-get install -y \
 ENV AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium
 ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
 
-# Install agent-browser and opencode globally
-RUN npm install -g agent-browser opencode
+# Install agent-browser and OpenCode CLI globally
+RUN npm install -g agent-browser opencode-ai
 
 # Create app directory
 WORKDIR /app
