@@ -81,7 +81,7 @@ cat .env  # Should show one of:
 #### Root User Restriction
 
 ```
---dangerously-skip-permissions cannot be used with root/sudo privileges
+--yolo cannot be used with root/sudo privileges
 ```
 
 **Fix:** Container must run as non-root user. Check Dockerfile has `USER node`.
@@ -215,7 +215,7 @@ docker run --rm --entrypoint /bin/bash \
   -v $(pwd)/data/env:/workspace/env-dir:ro \
   nanoclaw-agent:latest -c '
   export $(cat /workspace/env-dir/env | xargs)
-  opencode -p "Say hello" --dangerously-skip-permissions --allowedTools ""
+  opencode run "Say hello" --yolo
 '
 ```
 
@@ -227,23 +227,40 @@ docker run --rm -it --entrypoint /bin/bash nanoclaw-agent:latest
 
 ## SDK Options Reference
 
-The agent-runner uses these OpenCode SDK options:
+The agent-runner uses the OpenCode SDK (`@opencode-ai/sdk`):
 
 ```typescript
-query({
-  prompt: input.prompt,
-  options: {
-    cwd: '/workspace/group',
-    allowedTools: ['Bash', 'Read', 'Write', ...],
-    permissionMode: 'bypassPermissions',
-    allowDangerouslySkipPermissions: true,  // Required with bypassPermissions
-    settingSources: ['project'],
-    mcpServers: { ... }
-  }
-})
+const opencode = await createOpencode({
+  config: {
+    permission: {
+      edit: 'allow',
+      bash: 'allow',
+      webfetch: 'allow',
+    },
+    mcp: {
+      nanoclaw: {
+        type: 'local',
+        command: ['node', mcpServerPath],
+        environment: { ... },
+        enabled: true,
+      },
+    },
+  },
+});
+
+const session = await opencode.client.session.create({
+  query: { directory: '/workspace/group' },
+  body: { title: groupName },
+});
+
+await opencode.client.session.promptAsync({
+  path: { id: session.data.id },
+  query: { directory: '/workspace/group' },
+  body: { parts: [{ type: 'text', text: prompt }] },
+});
 ```
 
-**Important:** `allowDangerouslySkipPermissions: true` is required when using `permissionMode: 'bypassPermissions'`. Without it, OpenCode exits with code 1.
+**Permission bypass:** Set via `createOpencode({ config: { permission: { edit: 'allow', bash: 'allow' } } })` or env var `OPENCODE_PERMISSION=allow`. The `--yolo` flag is the CLI equivalent.
 
 ## Rebuilding After Changes
 
