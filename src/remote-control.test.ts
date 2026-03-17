@@ -80,24 +80,23 @@ describe('remote-control', () => {
   // --- startRemoteControl ---
 
   describe('startRemoteControl', () => {
-    it('spawns claude remote-control and returns the URL', async () => {
+    it('spawns opencode web and returns the URL', async () => {
       const proc = createMockProcess();
       spawnMock.mockReturnValue(proc);
 
-      // Simulate URL appearing in stdout file on first poll
-      stdoutFileContent =
-        'Session URL: https://claude.ai/code?bridge=env_abc123\n';
+      // Simulate URL appearing in stdout file on first poll (opencode web format)
+      stdoutFileContent = 'Web interface:     http://127.0.0.1:4096/\n';
       vi.spyOn(process, 'kill').mockImplementation((() => true) as any);
 
       const result = await startRemoteControl('user1', 'tg:123', '/project');
 
       expect(result).toEqual({
         ok: true,
-        url: 'https://claude.ai/code?bridge=env_abc123',
+        url: 'http://127.0.0.1:4096/',
       });
       expect(spawnMock).toHaveBeenCalledWith(
-        'claude',
-        ['remote-control', '--name', 'NanoClaw Remote'],
+        'opencode',
+        ['web'],
         expect.objectContaining({ cwd: '/project', detached: true }),
       );
       expect(proc.unref).toHaveBeenCalled();
@@ -106,14 +105,13 @@ describe('remote-control', () => {
     it('uses file descriptors for stdout/stderr (not pipes)', async () => {
       const proc = createMockProcess();
       spawnMock.mockReturnValue(proc);
-      stdoutFileContent = 'https://claude.ai/code?bridge=env_test\n';
+      stdoutFileContent = 'http://127.0.0.1:4096/\n';
       vi.spyOn(process, 'kill').mockImplementation((() => true) as any);
 
       await startRemoteControl('user1', 'tg:123', '/project');
 
       const spawnCall = spawnMock.mock.calls[0];
       const options = spawnCall[2];
-      // stdio[0] is 'pipe' so we can write 'y' to accept the prompt
       expect(options.stdio[0]).toBe('pipe');
       expect(typeof options.stdio[1]).toBe('number');
       expect(typeof options.stdio[2]).toBe('number');
@@ -122,7 +120,7 @@ describe('remote-control', () => {
     it('closes file descriptors in parent after spawn', async () => {
       const proc = createMockProcess();
       spawnMock.mockReturnValue(proc);
-      stdoutFileContent = 'https://claude.ai/code?bridge=env_test\n';
+      stdoutFileContent = 'http://127.0.0.1:4096/\n';
       vi.spyOn(process, 'kill').mockImplementation((() => true) as any);
 
       await startRemoteControl('user1', 'tg:123', '/project');
@@ -135,7 +133,7 @@ describe('remote-control', () => {
     it('saves state to disk after capturing URL', async () => {
       const proc = createMockProcess(99999);
       spawnMock.mockReturnValue(proc);
-      stdoutFileContent = 'https://claude.ai/code?bridge=env_save\n';
+      stdoutFileContent = 'http://127.0.0.1:4096/\n';
       vi.spyOn(process, 'kill').mockImplementation((() => true) as any);
 
       await startRemoteControl('user1', 'tg:123', '/project');
@@ -149,7 +147,7 @@ describe('remote-control', () => {
     it('returns existing URL if session is already active', async () => {
       const proc = createMockProcess();
       spawnMock.mockReturnValue(proc);
-      stdoutFileContent = 'https://claude.ai/code?bridge=env_existing\n';
+      stdoutFileContent = 'http://127.0.0.1:4096/\n';
       vi.spyOn(process, 'kill').mockImplementation((() => true) as any);
 
       await startRemoteControl('user1', 'tg:123', '/project');
@@ -158,7 +156,7 @@ describe('remote-control', () => {
       const result = await startRemoteControl('user2', 'tg:456', '/project');
       expect(result).toEqual({
         ok: true,
-        url: 'https://claude.ai/code?bridge=env_existing',
+        url: 'http://127.0.0.1:4096/',
       });
       expect(spawnMock).toHaveBeenCalledTimes(1);
     });
@@ -172,7 +170,7 @@ describe('remote-control', () => {
       const killSpy = vi
         .spyOn(process, 'kill')
         .mockImplementation((() => true) as any);
-      stdoutFileContent = 'https://claude.ai/code?bridge=env_first\n';
+      stdoutFileContent = 'http://127.0.0.1:4096/\n';
       await startRemoteControl('user1', 'tg:123', '/project');
 
       // Old process (11111) is dead, new process (22222) is alive
@@ -183,12 +181,12 @@ describe('remote-control', () => {
         return true;
       }) as any);
 
-      stdoutFileContent = 'https://claude.ai/code?bridge=env_second\n';
+      stdoutFileContent = 'http://127.0.0.1:4097/\n';
       const result = await startRemoteControl('user1', 'tg:123', '/project');
 
       expect(result).toEqual({
         ok: true,
-        url: 'https://claude.ai/code?bridge=env_second',
+        url: 'http://127.0.0.1:4097/',
       });
       expect(spawnMock).toHaveBeenCalledTimes(2);
     });
@@ -252,7 +250,7 @@ describe('remote-control', () => {
     it('kills the process and clears state', async () => {
       const proc = createMockProcess(55555);
       spawnMock.mockReturnValue(proc);
-      stdoutFileContent = 'https://claude.ai/code?bridge=env_stop\n';
+      stdoutFileContent = 'http://127.0.0.1:4096/\n';
       const killSpy = vi
         .spyOn(process, 'kill')
         .mockImplementation((() => true) as any);

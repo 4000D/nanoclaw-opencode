@@ -2,6 +2,7 @@ import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 
+import { AGENT_CLI_BIN, AGENT_WEB_URL_REGEX } from './agent-cli.js';
 import { DATA_DIR } from './config.js';
 import { logger } from './logger.js';
 
@@ -15,12 +16,17 @@ interface RemoteControlSession {
 
 let activeSession: RemoteControlSession | null = null;
 
-const URL_REGEX = /https:\/\/claude\.ai\/code\S+/;
+const URL_REGEX = AGENT_WEB_URL_REGEX;
 const URL_TIMEOUT_MS = 30_000;
 const URL_POLL_MS = 200;
 const STATE_FILE = path.join(DATA_DIR, 'remote-control.json');
 const STDOUT_FILE = path.join(DATA_DIR, 'remote-control.stdout');
 const STDERR_FILE = path.join(DATA_DIR, 'remote-control.stderr');
+const ANSI_REGEX = new RegExp('\\u001b\\[[0-9;]*m', 'g');
+
+function stripAnsi(str: string): string {
+  return str.replace(ANSI_REGEX, '');
+}
 
 function saveState(session: RemoteControlSession): void {
   fs.mkdirSync(path.dirname(STATE_FILE), { recursive: true });
@@ -107,23 +113,18 @@ export async function startRemoteControl(
   const stdoutFd = fs.openSync(STDOUT_FILE, 'w');
   const stderrFd = fs.openSync(STDERR_FILE, 'w');
 
-  let proc;
+  let proc: ReturnType<typeof spawn>;
   try {
-    proc = spawn('claude', ['remote-control', '--name', 'NanoClaw Remote'], {
+    proc = spawn(AGENT_CLI_BIN, ['web'], {
       cwd,
       stdio: ['pipe', stdoutFd, stderrFd],
       detached: true,
+      env: { ...process.env, OPENCODE_DISABLE_AUTOOPEN: '1' },
     });
   } catch (err: any) {
     fs.closeSync(stdoutFd);
     fs.closeSync(stderrFd);
     return { ok: false, error: `Failed to start: ${err.message}` };
-  }
-
-  // Auto-accept the "Enable Remote Control?" prompt
-  if (proc.stdin) {
-    proc.stdin.write('y\n');
-    proc.stdin.end();
   }
 
   // Close FDs in the parent — the child inherited copies
@@ -157,7 +158,7 @@ export async function startRemoteControl(
         // File might not have content yet
       }
 
-      const match = content.match(URL_REGEX);
+      const match = stripAnsi(content).match(URL_REGEX);
       if (match) {
         const session: RemoteControlSession = {
           pid,
